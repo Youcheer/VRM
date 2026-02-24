@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Vehicle Rent & Maintenance Monitor (Cloud Pro)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    colors: { primary: '#4f46e5', primaryHover: '#4338ca', dark: '#0f172a', light: '#f8fafc' }
+                }
+            }
+        }
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body class="flex h-screen overflow-hidden text-slate-800">
+
+    <div id="login-container" class="fixed inset-0 bg-slate-100 z-[100] flex items-center justify-center fade-in">
+        <div
+            class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-sm border border-slate-200 relative overflow-hidden">
+            <div class="absolute top-0 left-0 w-full h-2 bg-primary"></div>
+            <div class="flex justify-center mb-6 mt-2">
+                <div
+                    class="w-16 h-16 rounded-2xl cloud-badge text-white flex items-center justify-center text-3xl shadow-lg">
+                    <i class="fa-solid fa-car"></i>
+                </div>
+            </div>
+            <h2 class="text-2xl font-bold text-center text-slate-800 mb-2">System Login</h2>
+            <p class="text-center text-slate-500 mb-6 text-sm">Please log in to your account</p>
+
+            <form id="login-form">
+                <div class="mb-4">
+                    <label
+                        class="block text-xs font-semibold text-slate-600 mb-2 uppercase tracking-wide">Username</label>
+                    <div class="relative">
+                        <div
+                            class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                            <i class="fa-solid fa-user text-sm"></i>
+                        </div>
+                        <input type="text" id="login-username" required
+                            class="w-full pl-10 pr-3 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                            placeholder="Enter username">
+                    </div>
+                </div>
+                <div class="mb-5">
+                    <label
+                        class="block text-xs font-semibold text-slate-600 mb-2 uppercase tracking-wide">Password</label>
+                    <div class="relative">
+                        <div
+                            class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                            <i class="fa-solid fa-lock text-sm"></i>
+                        </div>
+                        <input type="password" id="login-password" required
+                            class="w-full pl-10 pr-3 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                            placeholder="Enter password">
+                    </div>
+                    <p id="login-error" class="text-red-500 text-xs mt-2 hidden"><i
+                            class="fa-solid fa-circle-exclamation mr-1"></i> Invalid credentials.</p>
+                </div>
+                <button type="submit" id="login-btn"
+                    class="w-full bg-primary hover:bg-primaryHover text-white py-3 rounded-xl font-medium transition-colors shadow-md flex justify-center items-center">
+                    <span>Login</span><i class="fa-solid fa-arrow-right-to-bracket ml-2"></i>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <aside class="w-64 bg-white border-r border-slate-200 hidden md:flex flex-col z-20 shadow-sm">
+        <div class="h-16 flex items-center px-6 border-b border-slate-100">
+            <div class="w-8 h-8 rounded cloud-badge text-white flex items-center justify-center mr-3 shadow-md"><i
+                    class="fa-solid fa-car"></i></div>
+            <h1 class="font-bold text-lg text-slate-800">VRM Pro</h1>
+        </div>
+        <div class="px-6 py-4 border-b border-slate-100 bg-slate-50 flex items-center">
+            <div class="w-10 h-10 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-lg mr-3 uppercase"
+                id="sidebar-user-avatar">A</div>
+            <div>
+                <p class="font-semibold text-sm text-slate-800" id="sidebar-username">Admin</p>
+                <p class="text-xs text-slate-500 capitalize" id="sidebar-role">Administrator</p>
+            </div>
+        </div>
+        <div class="flex-1 overflow-y-auto py-4">
+            <ul class="space-y-1">
+                <li><a href="#" class="nav-item active flex items-center px-6 py-3 text-slate-600"
+                        data-target="dashboard"><i class="fa-solid fa-chart-pie w-6"></i> Dashboard</a></li>
+                <li><a href="#" class="nav-item flex items-center px-6 py-3 text-slate-600" data-target="income"><i
+                            class="fa-solid fa-wallet w-6"></i> Rent Income</a></li>
+                <li><a href="#" class="nav-item flex items-center px-6 py-3 text-slate-600" data-target="expenses"><i
+                            class="fa-solid fa-money-bill-transfer w-6"></i> Expenses</a></li>
+                <li><a href="#" class="nav-item flex items-center px-6 py-3 text-slate-600" data-target="monthlyKm"><i
+                            class="fa-solid fa-road w-6"></i> Monthly KM Logs</a></li>
+                <li><a href="#" class="nav-item flex items-center px-6 py-3 text-slate-600" data-target="services"><i
+                            class="fa-solid fa-screwdriver-wrench w-6"></i> Services</a></li>
+                <li><a href="#" class="nav-item flex items-center px-6 py-3 text-slate-600" data-target="renewals"><i
+                            class="fa-solid fa-file-contract w-6"></i> Vehicle Documents</a></li>
+                <li><a href="#" class="nav-item flex items-center px-6 py-3 text-slate-600" data-target="vehicleInfo"><i
+                            class="fa-solid fa-car-side w-6"></i> Vehicle Info</a></li>
+                <li id="nav-users-li" class="hidden"><a href="#"
+                        class="nav-item flex items-center px-6 py-3 text-slate-600" data-target="users"><i
+                            class="fa-solid fa-users-gear w-6"></i> Manage Users</a></li>
+                <li id="nav-backup-li" class="hidden"><a href="#"
+                        class="nav-item flex items-center px-6 py-3 text-slate-600" data-target="backup"><i
+                            class="fa-solid fa-database w-6"></i> Backup & Restore</a></li>
+                <li class="mt-4 border-t border-slate-100 pt-2"><a href="#"
+                        class="flex items-center px-6 py-3 text-red-500 hover:bg-red-50 transition-colors"
+                        onclick="logout(event)"><i class="fa-solid fa-right-from-bracket w-6"></i> Logout</a></li>
+            </ul>
+        </div>
+    </aside>
+
+    <div class="flex-1 flex flex-col h-screen overflow-hidden relative">
+        <header
+            class="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 sm:px-6 z-10 shadow-sm">
+            <div class="flex items-center">
+                <div
+                    class="w-8 h-8 rounded cloud-badge text-white flex md:hidden items-center justify-center mr-3 shadow-md">
+                    <i class="fa-solid fa-car"></i>
+                </div>
+                <h2 id="page-title" class="text-xl font-semibold text-slate-800">Dashboard</h2>
+            </div>
+            <div class="relative flex items-center gap-3">
+                <span
+                    class="text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-600 px-2 py-1 rounded-full"><i
+                        class="fa-solid fa-cloud mr-1"></i> Synced</span>
+                <button id="theme-toggle-btn"
+                    class="w-10 h-10 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-500 transition-colors">
+                    <i id="theme-icon" class="fa-solid fa-moon"></i>
+                </button>
+                <button id="notif-btn"
+                    class="w-10 h-10 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-500 relative transition-colors">
+                    <i class="fa-solid fa-bell"></i>
+                    <span id="notif-badge"
+                        class="absolute top-2 right-2 w-2.5 h-2.5 bg-red-500 rounded-full hidden border-2 border-white"></span>
+                </button>
+                <div id="notif-dropdown"
+                    class="absolute right-0 top-12 mt-2 w-80 bg-white rounded-xl shadow-lg border border-slate-100 hidden z-50 overflow-hidden">
+                    <div class="px-4 py-3 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+                        <h3 class="font-semibold text-sm text-slate-700">Notifications</h3><span id="notif-count"
+                            class="text-xs bg-primary text-white px-2 py-0.5 rounded-full">0</span>
+                    </div>
+                    <div id="notif-list" class="max-h-80 overflow-y-auto"></div>
+                </div>
+            </div>
+        </header>
+
+        <div id="global-alerts"
+            class="w-full flex flex-col items-center px-4 pt-4 pointer-events-none space-y-2 empty:hidden empty:pt-0">
+        </div>
+        <main class="flex-1 overflow-y-auto p-4 sm:p-6 pb-24 md:pb-6 fade-in main-scroll-area" id="main-content"></main>
+    </div>
+
+    <!-- Mobile Bottom Navigation -->
+    <nav
+        class="md:hidden fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-md border-t border-slate-200 z-40 flex justify-around pb-safe">
+        <a href="#"
+            class="mobile-nav-btn active flex-1 flex flex-col items-center py-3 text-slate-400 hover:text-slate-600 transition-colors"
+            data-target="dashboard">
+            <i class="fa-solid fa-chart-pie text-lg mb-1"></i>
+            <span class="text-[10px] font-semibold">Home</span>
+        </a>
+        <a href="#"
+            class="mobile-nav-btn flex-1 flex flex-col items-center py-3 text-slate-400 hover:text-slate-600 transition-colors"
+            data-target="income">
+            <i class="fa-solid fa-wallet text-lg mb-1"></i>
+            <span class="text-[10px] font-semibold">Income</span>
+        </a>
+        <a href="#"
+            class="mobile-nav-btn flex-1 flex flex-col items-center py-3 text-slate-400 hover:text-slate-600 transition-colors"
+            data-target="expenses">
+            <i class="fa-solid fa-money-bill-transfer text-lg mb-1"></i>
+            <span class="text-[10px] font-semibold">Expense</span>
+        </a>
+        <a href="#" id="mobile-menu-open-more"
+            class="flex-1 flex flex-col items-center py-3 text-slate-400 hover:text-slate-600 transition-colors">
+            <i class="fa-solid fa-bars text-lg mb-1"></i>
+            <span class="text-[10px] font-semibold">More</span>
+        </a>
+    </nav>
+
+    <div id="mobile-sidebar-overlay"
+        class="fixed inset-0 bg-slate-800/50 z-40 hidden md:hidden backdrop-blur-sm transition-opacity"></div>
+    <aside id="mobile-sidebar"
+        class="fixed top-0 left-0 bottom-0 w-64 bg-white z-50 transform -translate-x-full transition-transform duration-300 md:hidden flex flex-col shadow-2xl">
+        <div class="h-16 flex items-center justify-between px-6 border-b border-slate-100">
+            <div class="flex items-center">
+                <div class="w-8 h-8 rounded cloud-badge text-white flex items-center justify-center mr-3"><i
+                        class="fa-solid fa-car"></i></div>
+                <h1 class="font-bold text-lg text-slate-800">VRM Pro</h1>
+            </div>
+            <button id="close-mobile-menu" class="text-slate-400 hover:text-slate-600"><i
+                    class="fa-solid fa-xmark text-xl"></i></button>
+        </div>
+        <div class="flex-1 overflow-y-auto py-4">
+            <ul class="space-y-1" id="mobile-nav-list"></ul>
+        </div>
+    </aside>
+
+    <div id="app-modal" class="fixed inset-0 modal-bg z-50 hidden flex items-center justify-center p-4">
+        <div
+            class="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh] fade-in relative">
+            <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                <h3 id="modal-title" class="font-semibold text-lg text-slate-800">Add Record</h3>
+                <button id="close-modal" onclick="closeModal()"
+                    class="text-slate-400 hover:text-slate-600 transition-colors w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100"><i
+                        class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="p-6 overflow-y-auto" id="modal-body"></div>
+        </div>
+    </div>
+
+    <div id="image-modal" class="fixed inset-0 modal-bg z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-slate-900/40 absolute inset-0"></div>
+        <div
+            class="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh] fade-in relative z-10 w-full relative">
+            <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                <h3 class="font-semibold text-lg text-slate-800">View Document</h3>
+                <button onclick="closeImageModal()"
+                    class="text-slate-400 hover:text-slate-600 transition-colors w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-200"><i
+                        class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="p-4 overflow-auto flex justify-center bg-slate-200" style="min-height: 400px;"><img
+                    id="modal-image-view" src="" class="max-w-full max-h-[70vh] object-contain shadow-sm"
+                    alt="Document" /></div>
+        </div>
+    </div>
+
+    <script src="firebase-config.js"></script>
+    <script src="auth.js"></script>
+    <script src="app.js"></script>
+</body>
+</body>
+
+</html>
