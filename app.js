@@ -10,6 +10,14 @@ function setupNavListeners() {
             closeMobileMenu();
         });
     });
+
+    document.querySelectorAll('.mobile-nav-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const target = e.currentTarget.getAttribute('data-target');
+            if (target) switchTab(target);
+        });
+    });
 }
 
 const closeMobileMenu = () => { document.getElementById('mobile-sidebar').classList.add('-translate-x-full'); document.getElementById('mobile-sidebar-overlay').classList.add('hidden'); };
@@ -20,6 +28,12 @@ async function switchTab(tab) {
         if (i.getAttribute('data-target') === tab) { i.classList.add('active'); document.getElementById('page-title').innerText = i.innerText.trim(); }
         else i.classList.remove('active');
     });
+
+    document.querySelectorAll('.mobile-nav-btn').forEach(btn => {
+        if (btn.getAttribute('data-target') === tab) btn.classList.add('active', 'text-primary');
+        else btn.classList.remove('active', 'text-primary');
+    });
+
     const mc = document.getElementById('main-content');
     mc.innerHTML = `<div class="flex justify-center py-10"><i class="fa-solid fa-spinner fa-spin text-primary text-4xl"></i></div>`;
     try {
@@ -32,44 +46,91 @@ async function switchTab(tab) {
         else if (tab === 'vehicleInfo') await renderVehicleInfo();
         else if (tab === 'users' && currentUser.role === 'admin') await renderUsersTab();
         else if (tab === 'backup' && currentUser.role === 'admin') renderBackupTab();
+        checkNotifications();
     } catch (err) { console.error(err); mc.innerHTML = `<div class="p-4 text-red-500 bg-red-50 rounded-lg">Error loading data. Check internet.</div>`; }
 }
 
 /* -------------------------------------------------------------------------- */
 /* 4. Dashboard View (With Charts)                                            */
 /* -------------------------------------------------------------------------- */
+let currentDashboardFilter = 'all';
+
+async function setDashboardFilter(filter) {
+    currentDashboardFilter = filter;
+    await renderDashboard();
+}
+
 async function renderDashboard() {
-    const incomeRecords = await fetchCollection('rentIncome');
-    const expenseRecords = await fetchCollection('expenses');
-    const kmRecords = await fetchCollection('monthlyKm');
-    const kmLog = kmRecords.length > 0 ? kmRecords[0] : null;
+    let incomeRecords = await fetchCollection('rentIncome');
+    let expenseRecords = await fetchCollection('expenses');
+    let kmRecords = await fetchCollection('monthlyKm');
+    const allKmRecords = [...kmRecords]; // Preserve un-filtered for currentKm
+
+    // Apply Date Filtering
+    if (currentDashboardFilter !== 'all') {
+        const filterFn = (item) => {
+            const d = new Date(item.date || item.createdAt);
+            const now = new Date();
+            if (currentDashboardFilter === 'thisMonth') {
+                return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+            }
+            if (currentDashboardFilter === 'lastMonth') {
+                const lm = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                return d.getMonth() === lm.getMonth() && d.getFullYear() === lm.getFullYear();
+            }
+            if (currentDashboardFilter === 'thisYear') {
+                return d.getFullYear() === now.getFullYear();
+            }
+            if (currentDashboardFilter === 'customRange') {
+                const start = document.getElementById('filter-start-date').value;
+                const end = document.getElementById('filter-end-date').value;
+                if (!start || !end) return true;
+                const dateStart = new Date(start);
+                const dateEnd = new Date(end);
+                dateEnd.setHours(23, 59, 59, 999);
+                return d >= dateStart && d <= dateEnd;
+            }
+            return true;
+        };
+        incomeRecords = incomeRecords.filter(filterFn);
+        expenseRecords = expenseRecords.filter(filterFn);
+        kmRecords = kmRecords.filter(filterFn);
+    }
+    const kmLog = allKmRecords.length > 0 ? allKmRecords[0] : null;
 
     const totalIncome = incomeRecords.reduce((sum, item) => sum + Number(item.amount), 0);
     const totalExpense = expenseRecords.reduce((sum, item) => sum + Number(item.amount), 0);
     const netProfit = totalIncome - totalExpense;
     const currentKm = kmLog ? kmLog.currentKm : 0;
 
+    const totalDrivenKMs = kmRecords.reduce((sum, item) => sum + Number(item.monthlyKm), 0);
+    const costPerKm = totalDrivenKMs > 0 ? (totalExpense / totalDrivenKMs) : 0;
+
     let html = `
         <div class="mb-6 slide-up">
             <h2 class="text-2xl font-bold text-slate-800">Welcome back, ${currentUser ? currentUser.username : 'User'}!</h2>
             <p class="text-sm text-slate-500 mt-1">Here is the latest summary of your vehicle operations.</p>
         </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
-            <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 flex items-center slide-up delay-100 hover-lift">
-                <div class="w-14 h-14 rounded-full bg-emerald-50 text-emerald-500 flex items-center justify-center text-2xl mr-5"><i class="fa-solid fa-arrow-trend-up"></i></div>
-                <div><p class="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1">Total Income</p><p class="text-2xl font-black text-slate-800">${formatCurrency(totalIncome)}</p></div>
+        <div class="grid grid-cols-2 lg:grid-cols-5 gap-4 sm:gap-6 mb-8">
+            <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex flex-col justify-center slide-up delay-100 hover-lift">
+                <div class="flex items-center mb-2"><div class="w-8 h-8 rounded-full bg-emerald-50 text-emerald-500 flex items-center justify-center mr-3"><i class="fa-solid fa-arrow-trend-up"></i></div><p class="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Total Income</p></div>
+                <p class="text-xl font-black text-slate-800">${formatCurrency(totalIncome)}</p>
             </div>
-            <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 flex items-center slide-up delay-200 hover-lift">
-                <div class="w-14 h-14 rounded-full bg-rose-50 text-rose-500 flex items-center justify-center text-2xl mr-5"><i class="fa-solid fa-money-bill-transfer"></i></div>
-                <div><p class="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1">Total Expense</p><p class="text-2xl font-black text-slate-800">${formatCurrency(totalExpense)}</p></div>
+            <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex flex-col justify-center slide-up delay-200 hover-lift">
+                <div class="flex items-center mb-2"><div class="w-8 h-8 rounded-full bg-rose-50 text-rose-500 flex items-center justify-center mr-3"><i class="fa-solid fa-money-bill-transfer"></i></div><p class="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Total Expense</p></div>
+                <p class="text-xl font-black text-slate-800">${formatCurrency(totalExpense)}</p>
             </div>
-            <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 flex items-center slide-up delay-300 hover-lift">
-                <div class="w-14 h-14 rounded-full ${netProfit >= 0 ? 'bg-indigo-50 text-indigo-500' : 'bg-orange-50 text-orange-500'} flex items-center justify-center text-2xl mr-5"><i class="fa-solid fa-wallet"></i></div>
-                <div><p class="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1">Net Profit</p><p class="text-2xl font-black ${netProfit >= 0 ? 'text-indigo-600' : 'text-orange-500'}">${formatCurrency(netProfit)}</p></div>
+            <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex flex-col justify-center slide-up delay-300 hover-lift">
+                <div class="flex items-center mb-2"><div class="w-8 h-8 rounded-full ${netProfit >= 0 ? 'bg-indigo-50 text-indigo-500' : 'bg-orange-50 text-orange-500'} flex items-center justify-center mr-3"><i class="fa-solid fa-wallet"></i></div><p class="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Net Profit</p></div>
+                <p class="text-xl font-black ${netProfit >= 0 ? 'text-indigo-600' : 'text-orange-500'}">${formatCurrency(netProfit)}</p>
             </div>
-            <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 flex items-center slide-up delay-400 hover-lift">
-                <div class="w-14 h-14 rounded-full bg-sky-50 text-sky-500 flex items-center justify-center text-2xl mr-5"><i class="fa-solid fa-gauge-high"></i></div>
-                <div><p class="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1">Current KM</p><p class="text-2xl font-black text-slate-800">${formatKm(currentKm)} <span class="text-sm font-medium text-slate-400">KM</span></p></div>
+            <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex flex-col justify-center slide-up delay-400 hover-lift">
+                <div class="flex items-center mb-2"><div class="w-8 h-8 rounded-full bg-sky-50 text-sky-500 flex items-center justify-center mr-3"><i class="fa-solid fa-gauge-high"></i></div><p class="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Current KM</p></div>
+                <p class="text-xl font-black text-slate-800">${formatKm(currentKm)} <span class="text-xs font-medium text-slate-400">KM</span></p>
+            </div>
+            <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex flex-col justify-center slide-up delay-500 hover-lift col-span-2 lg:col-span-1">
+                <div class="flex items-center mb-2"><div class="w-8 h-8 rounded-full bg-purple-50 text-purple-500 flex items-center justify-center mr-3"><i class="fa-solid fa-calculator"></i></div><p class="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Cost Per KM</p></div>
+                <p class="text-xl font-black text-slate-800">Rs. ${costPerKm.toFixed(2)} <span class="text-[10px] font-medium text-slate-400">/ KM</span></p>
             </div>
         </div>
 
@@ -77,7 +138,24 @@ async function renderDashboard() {
             <div class="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden p-6 slide-up delay-200 flex flex-col">
                 <div class="flex justify-between items-center mb-6">
                     <h3 class="font-bold text-lg text-slate-800">Financial Overview</h3>
-                    <div class="p-2 bg-slate-50 rounded-lg"><i class="fa-solid fa-chart-column text-slate-400"></i></div>
+                    <div class="flex items-center gap-2">
+                        <div id="custom-date-inputs" class="hidden items-center gap-1 mr-2 px-2 border-r border-slate-200">
+                            <input type="date" id="filter-start-date" class="text-xs border rounded px-1.5 py-1" onchange="setDashboardFilter('customRange')" value="${currentDashboardFilter === 'customRange' ? (document.getElementById('filter-start-date') ? document.getElementById('filter-start-date').value : '') : ''}">
+                            <span class="text-xs text-slate-400">to</span>
+                            <input type="date" id="filter-end-date" class="text-xs border rounded px-1.5 py-1" onchange="setDashboardFilter('customRange')" value="${currentDashboardFilter === 'customRange' ? (document.getElementById('filter-end-date') ? document.getElementById('filter-end-date').value : '') : ''}">
+                        </div>
+                        <select onchange="handleFilterChange(this.value)" class="text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:ring-primary focus:border-primary bg-white text-slate-700 font-medium">
+                            <option value="all" ${currentDashboardFilter === 'all' ? 'selected' : ''}>All Time</option>
+                            <option value="thisMonth" ${currentDashboardFilter === 'thisMonth' ? 'selected' : ''}>This Month</option>
+                            <option value="lastMonth" ${currentDashboardFilter === 'lastMonth' ? 'selected' : ''}>Last Month</option>
+                            <option value="thisYear" ${currentDashboardFilter === 'thisYear' ? 'selected' : ''}>This Year</option>
+                            <option value="customRange" ${currentDashboardFilter === 'customRange' ? 'selected' : ''}>Custom Range...</option>
+                        </select>
+                        <button onclick="generateVehiclePDF()" class="bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center shadow-sm">
+                            <i class="fa-solid fa-file-pdf mr-1.5 hidden sm:inline"></i><span class="hidden sm:inline">Download PDF</span><i class="fa-solid fa-download sm:hidden"></i>
+                        </button>
+                        <div class="p-2 bg-slate-50 rounded-lg hidden md:block"><i class="fa-solid fa-chart-column text-slate-400"></i></div>
+                    </div>
                 </div>
                 <div class="relative flex-1 w-full min-h-[300px]"><canvas id="financeChart"></canvas></div>
             </div>
@@ -91,6 +169,9 @@ async function renderDashboard() {
         </div>
     `;
     document.getElementById('main-content').innerHTML = html;
+
+    // Re-check visibility of custom date fields
+    handleFilterChange(currentDashboardFilter, true);
 
     // Render Chart
     renderChart(totalIncome, totalExpense, netProfit);
@@ -169,13 +250,200 @@ function renderChart(inc, exp, prof) {
     });
 }
 
+async function generateVehiclePDF() {
+    try {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+
+        // Show loading state (could enhance this with a proper UI loader later)
+        showToast('Generating PDF Report...', 'success');
+
+        // Fetch required data
+        let incomeRecords = await fetchCollection('rentIncome');
+        let expenseRecords = await fetchCollection('expenses');
+        const infoSnap = await db.collection('vehicleInfo').limit(1).get();
+        const vInfo = infoSnap.empty ? {} : infoSnap.docs[0].data();
+
+        // Apply active filter
+        let filterLabel = "All Time";
+        if (currentDashboardFilter !== 'all') {
+            const filterFn = (item) => {
+                const d = new Date(item.date || item.createdAt);
+                const now = new Date();
+                if (currentDashboardFilter === 'thisMonth') {
+                    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+                }
+                if (currentDashboardFilter === 'lastMonth') {
+                    const lm = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                    return d.getMonth() === lm.getMonth() && d.getFullYear() === lm.getFullYear();
+                }
+                if (currentDashboardFilter === 'thisYear') {
+                    return d.getFullYear() === now.getFullYear();
+                }
+                if (currentDashboardFilter === 'customRange') {
+                    const start = document.getElementById('filter-start-date').value;
+                    const end = document.getElementById('filter-end-date').value;
+                    if (!start || !end) return true;
+                    const dateStart = new Date(start);
+                    const dateEnd = new Date(end);
+                    dateEnd.setHours(23, 59, 59, 999);
+                    return d >= dateStart && d <= dateEnd;
+                }
+                return true;
+            };
+            incomeRecords = incomeRecords.filter(filterFn);
+            expenseRecords = expenseRecords.filter(filterFn);
+
+            const labelsMap = { 'thisMonth': 'This Month', 'lastMonth': 'Last Month', 'thisYear': 'This Year', 'customRange': 'Custom Range' };
+            filterLabel = labelsMap[currentDashboardFilter] || 'All Time';
+        }
+
+        // Calculations
+        const totalIncome = incomeRecords.reduce((sum, item) => sum + Number(item.amount), 0);
+        const totalExpense = expenseRecords.reduce((sum, item) => sum + Number(item.amount), 0);
+        const netProfit = totalIncome - totalExpense;
+
+        // Custom Colors
+        const primaryColor = [79, 70, 229]; // Indigo-600
+        const darkTextColor = [15, 23, 42]; // Slate-900
+        const lightTextColor = [100, 116, 139]; // Slate-500
+
+        // Format Date
+        const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+        // Document Header
+        doc.setFontSize(22);
+        doc.setTextColor(...primaryColor);
+        doc.setFont("helvetica", "bold");
+        doc.text("VRM Pro - Vehicle Report", 14, 20);
+
+        doc.setFontSize(10);
+        doc.setTextColor(...lightTextColor);
+        doc.setFont("helvetica", "normal");
+        doc.text(`Generated on: ${today} | Filtered by: ${filterLabel}`, 14, 28);
+
+        // Vehicle Information Box
+        doc.setFillColor(248, 250, 252); // Slate-50
+        doc.setDrawColor(226, 232, 240); // Slate-200
+        doc.roundedRect(14, 35, 182, 35, 3, 3, 'FD');
+
+        doc.setFontSize(12);
+        doc.setTextColor(...darkTextColor);
+        doc.setFont("helvetica", "bold");
+        doc.text("Vehicle Profile", 18, 43);
+
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(...lightTextColor);
+
+        let vDetails = [
+            `Number: ${vInfo.vehicleNumber || 'N/A'}`,
+            `Make/Model: ${vInfo.make || 'N/A'} ${vInfo.model || ''}`,
+            `Owner: ${vInfo.currentOwner || 'N/A'}`
+        ];
+        doc.text(vDetails[0], 18, 52);
+        doc.text(vDetails[1], 18, 58);
+        doc.text(vDetails[2], 18, 64);
+
+        // Financial Summary Box
+        let startY = 80;
+        doc.setFontSize(14);
+        doc.setTextColor(...darkTextColor);
+        doc.setFont("helvetica", "bold");
+        doc.text("Financial Summary", 14, startY);
+
+        doc.autoTable({
+            startY: startY + 5,
+            head: [['Total Income', 'Total Expenses', 'Net Profit']],
+            body: [[
+                `Rs. ${totalIncome.toLocaleString()}`,
+                `Rs. ${totalExpense.toLocaleString()}`,
+                `Rs. ${netProfit.toLocaleString()}`
+            ]],
+            headStyles: { fillColor: primaryColor, textColor: 255, fontStyle: 'bold', halign: 'center' },
+            bodyStyles: { halign: 'center', fontSize: 12, fontStyle: 'bold', textColor: [30, 41, 59] },
+            theme: 'grid',
+            margin: { left: 14, right: 14 }
+        });
+
+        // Income Breakdown
+        let nextY = doc.lastAutoTable.finalY + 15;
+        doc.setFontSize(14);
+        doc.setTextColor(...darkTextColor);
+        doc.text("Rent Income Breakdown", 14, nextY);
+
+        const incomeData = incomeRecords.map(inc => [
+            formatDate(inc.date),
+            `Rs. ${Number(inc.amount).toLocaleString()}`,
+            inc.addedBy || 'System'
+        ]);
+
+        doc.autoTable({
+            startY: nextY + 5,
+            head: [['Date', 'Amount', 'Added By']],
+            body: incomeData.length > 0 ? incomeData : [['No records', '', '']],
+            headStyles: { fillColor: [16, 185, 129] }, // Emerald-500
+            theme: 'striped',
+            margin: { left: 14, right: 14 }
+        });
+
+        // Expense Breakdown
+        nextY = doc.lastAutoTable.finalY + 15;
+        doc.setFontSize(14);
+        doc.setTextColor(...darkTextColor);
+        doc.text("Expense Breakdown", 14, nextY);
+
+        const expenseData = expenseRecords.map(exp => [
+            formatDate(exp.date),
+            exp.category || '-',
+            exp.description || '-',
+            `Rs. ${Number(exp.amount).toLocaleString()}`
+        ]);
+
+        doc.autoTable({
+            startY: nextY + 5,
+            head: [['Date', 'Category', 'Description', 'Amount']],
+            body: expenseData.length > 0 ? expenseData : [['No records', '', '', '']],
+            headStyles: { fillColor: [244, 63, 94] }, // Rose-500
+            theme: 'striped',
+            margin: { left: 14, right: 14 }
+        });
+
+        // Footer
+        const pageCount = doc.internal.getNumberOfPages();
+        for (let i = 1; i <= pageCount; i++) {
+            doc.setPage(i);
+            doc.setFontSize(8);
+            doc.setTextColor(148, 163, 184); // Slate-400
+            doc.text(`VRM Pro Application - Page ${i} of ${pageCount}`, doc.internal.pageSize.width / 2, doc.internal.pageSize.height - 10, { align: 'center' });
+        }
+
+        doc.save(`VRM_Report_${vInfo.vehicleNumber || 'Vehicle'}_${new Date().toISOString().split('T')[0]}.pdf`);
+        showToast('PDF generated successfully!', 'success');
+
+    } catch (err) {
+        console.error("Error generating PDF:", err);
+        showToast('Failed to generate PDF report', 'danger');
+    }
+}
+
 /* -------------------------------------------------------------------------- */
 /* 5. Dynamic Tables (With Admin Controls)                                    */
 /* -------------------------------------------------------------------------- */
 async function renderTableTab(tableName, singularName, title, columns) {
     const records = await fetchCollection(tableName);
     let currentKm = 0;
-    if (tableName === 'serviceTracker') { const kms = await fetchCollection('monthlyKm'); currentKm = kms.length > 0 ? kms[0].currentKm : 0; }
+    let latestServiceId = null;
+    if (tableName === 'serviceTracker') {
+        const kms = await fetchCollection('monthlyKm');
+        currentKm = kms.length > 0 ? kms[0].currentKm : 0;
+
+        // Find highest service KM to dynamically hide old overdues
+        let maxKm = -1;
+        records.forEach(r => {
+            if (Number(r.serviceKm) > maxKm) { maxKm = Number(r.serviceKm); latestServiceId = r.id; }
+        });
+    }
 
     let html = `
         <div class="flex justify-between items-center mb-6 gap-4">
@@ -193,20 +461,41 @@ async function renderTableTab(tableName, singularName, title, columns) {
             html += `<tr class="hover:bg-slate-50 transition-colors">`;
             columns.forEach(col => {
                 let val = record[col];
-                if (col === 'bill' || col === 'documentImage') { html += val ? `<td class="px-6 py-4"><button onclick="viewImage('${val}')" class="text-primary text-sm font-medium"><i class="fa-regular fa-image mr-1"></i> View</button></td>` : `<td class="px-6 py-4 text-slate-400 text-xs">No image</td>`; }
-                else if (col === 'addedBy') { html += `<td class="px-6 py-4"><span class="bg-slate-100 text-slate-600 text-[10px] px-2 py-1 rounded capitalize">${val || 'Admin'}</span></td>`; }
-                else if (col === 'remainingKm') { let rem = record.nextServiceKm - currentKm; let cC = rem <= 0 ? 'text-red-500' : (rem <= 500 ? 'text-orange-500' : 'text-slate-700'); html += `<td class="px-6 py-4 ${cC} font-medium">${rem <= 0 ? `Overdue by ${formatKm(Math.abs(rem))}` : formatKm(rem)}</td>`; }
-                else { if (col.toLowerCase().includes('date')) val = formatDate(val); else if (col.toLowerCase().includes('amount')) val = formatCurrency(val); else if (col.toLowerCase().includes('km') && val !== null && !isNaN(val)) val = formatKm(val); html += `<td class="px-6 py-4 text-slate-700">${val || '-'}</td>`; }
+                let label = col.replace(/([A-Z])/g, ' $1').trim();
+                let dl = `data-label="${label}"`;
+                if (col === 'bill' || col === 'documentImage') { html += val ? `<td ${dl} class="px-6 py-4"><button onclick="viewImage('${val}')" class="text-primary text-sm font-medium"><i class="fa-regular fa-image mr-1"></i> View</button></td>` : `<td ${dl} class="px-6 py-4 text-slate-400 text-xs">No image</td>`; }
+                else if (col === 'addedBy') { html += `<td ${dl} class="px-6 py-4"><span class="bg-slate-100 text-slate-600 text-[10px] px-2 py-1 rounded capitalize">${val || 'Admin'}</span></td>`; }
+                else if (col === 'remainingKm') {
+                    let rem = record.nextServiceKm - currentKm;
+                    if (tableName === 'serviceTracker' && (record.id !== latestServiceId || record.status === 'Completed (Past)')) {
+                        html += `<td ${dl} class="px-6 py-4 text-emerald-500 font-medium">Service Done</td>`;
+                    } else {
+                        let cC = rem <= 0 ? 'text-red-500' : (rem <= 500 ? 'text-orange-500' : 'text-slate-700');
+                        let remText = rem <= 0 ? `Overdue by ${formatKm(Math.abs(rem))}` : formatKm(rem);
+                        html += `<td ${dl} class="px-6 py-4 ${cC} font-medium">${remText}</td>`;
+                    }
+                }
+                else if (col === 'status') {
+                    let stat = val;
+                    if (tableName === 'serviceTracker') {
+                        stat = (record.id === latestServiceId && val !== 'Completed (Past)') ? 'Active' : 'Completed';
+                        let b = stat === 'Active' ? 'text-sky-600 font-bold' : 'text-slate-500 font-medium';
+                        html += `<td ${dl} class="px-6 py-4 ${b}">${stat || '-'}</td>`;
+                    } else {
+                        html += `<td ${dl} class="px-6 py-4 text-slate-700 capitalize font-medium">${val || '-'}</td>`;
+                    }
+                }
+                else { if (col.toLowerCase().includes('date')) val = formatDate(val); else if (col.toLowerCase().includes('amount')) val = formatCurrency(val); else if (col.toLowerCase().includes('km') && val !== null && !isNaN(val)) val = formatKm(val); html += `<td ${dl} class="px-6 py-4 text-slate-700">${val || '-'}</td>`; }
             });
 
             // Action Buttons (Only Admin can Edit/Delete)
             if (currentUser.role === 'admin') {
-                html += `<td class="px-6 py-4 text-right">
+                html += `<td data-label="Actions" class="px-6 py-4 text-right">
                             <button onclick="editRecord('${tableName}', '${record.id}')" class="text-sky-500 hover:text-sky-700 p-1 mr-2" title="Edit"><i class="fa-solid fa-pen-to-square"></i></button>
                             <button onclick="deleteRecord('${tableName}', '${record.id}')" class="text-red-400 hover:text-red-600 p-1" title="Delete"><i class="fa-solid fa-trash"></i></button>
                             </td></tr>`;
             } else {
-                html += `<td class="px-6 py-4 text-right"><i class="fa-solid fa-lock text-slate-300" title="Admin access required"></i></td></tr>`;
+                html += `<td data-label="Actions" class="px-6 py-4 text-right"><i class="fa-solid fa-lock text-slate-300" title="Admin access required"></i></td></tr>`;
             }
         });
     }
@@ -227,7 +516,7 @@ async function renderUsersTab() {
 
     users.forEach(u => {
         let badge = u.role === 'admin' ? 'bg-indigo-100 text-indigo-700' : 'bg-emerald-100 text-emerald-700';
-        html += `<tr class="hover:bg-slate-50"><td class="px-6 py-4 font-medium text-slate-800"><i class="fa-solid fa-circle-user text-slate-400 mr-2 text-lg align-middle"></i>${u.username}</td><td class="px-6 py-4"><span class="px-2.5 py-1 rounded-full text-xs font-semibold capitalize ${badge}">${u.role}</span></td><td class="px-6 py-4 text-right">`;
+        html += `<tr class="hover:bg-slate-50"><td data-label="Username" class="px-6 py-4 font-medium text-slate-800"><i class="fa-solid fa-circle-user text-slate-400 mr-2 text-lg align-middle"></i>${u.username}</td><td data-label="Role" class="px-6 py-4"><span class="px-2.5 py-1 rounded-full text-xs font-semibold capitalize ${badge}">${u.role}</span></td><td data-label="Actions" class="px-6 py-4 text-right">`;
         if (u.username !== 'admin') {
             html += `<button onclick="deleteRecord('users', '${u.id}')" class="text-red-400 hover:text-red-600 p-1" title="Delete User"><i class="fa-solid fa-trash"></i></button>`;
         } else {
@@ -265,12 +554,116 @@ async function saveUser(e) {
 /* -------------------------------------------------------------------------- */
 /* 7. Forms, Adding & Editing Logic                                           */
 /* -------------------------------------------------------------------------- */
+
+let predefinedCategories = {
+    expenses: ['Repair', 'Maintenance', 'Fuel', 'Other'],
+    renewals: ['Insurance', 'License', 'Emission Test (PUC)'],
+    loaded: false
+};
+
+async function loadCategories() {
+    try {
+        const doc = await db.collection('settings').doc('categories').get();
+        if (doc.exists) {
+            predefinedCategories = { ...predefinedCategories, ...doc.data(), loaded: true };
+        } else {
+            predefinedCategories.loaded = true;
+            await db.collection('settings').doc('categories').set({ expenses: predefinedCategories.expenses, renewals: predefinedCategories.renewals });
+        }
+    } catch (e) { predefinedCategories.loaded = true; }
+}
+
+async function saveCategories() {
+    try {
+        await db.collection('settings').doc('categories').set({ expenses: predefinedCategories.expenses, renewals: predefinedCategories.renewals });
+        const expSelect = document.getElementById('f-cat');
+        if (expSelect) { const cur = expSelect.value; expSelect.innerHTML = predefinedCategories.expenses.map(c => `<option>${c}</option>`).join(''); expSelect.value = cur; }
+        const renSelect = document.getElementById('f-type');
+        if (renSelect) { const cur = renSelect.value; renSelect.innerHTML = predefinedCategories.renewals.map(c => `<option>${c}</option>`).join(''); renSelect.value = cur; }
+    } catch (e) { }
+}
+
+function manageCategories(type) {
+    const typeLabel = type === 'expenses' ? 'Expense Categories' : 'Document Types';
+    const list = predefinedCategories[type];
+
+    const ex = document.getElementById('cat-mgr-modal');
+    if (ex) ex.remove();
+
+    let listHtml = list.map((c, i) => `
+        <div class="flex justify-between items-center bg-slate-50 p-3 rounded-lg border border-slate-100 mb-2">
+            <span class="font-medium text-sm text-slate-700">${c}</span>
+            <div>
+                <button type="button" onclick="editCategoryItem('${type}', ${i})" class="text-sky-500 hover:text-sky-700 mx-2 p-1"><i class="fa-solid fa-pen"></i></button>
+                <button type="button" onclick="deleteCategoryItem('${type}', ${i})" class="text-rose-400 hover:text-rose-600 p-1"><i class="fa-solid fa-trash"></i></button>
+            </div>
+        </div>
+    `).join('');
+
+    const html = `
+    <div id="cat-mgr-modal" class="fixed inset-0 modal-bg z-[60] flex items-center justify-center p-4 fade-in">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col max-h-[90vh] relative border border-slate-100">
+            <div class="px-5 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                <h3 class="font-semibold text-base text-slate-800">Manage ${typeLabel}</h3>
+                <button type="button" onclick="document.getElementById('cat-mgr-modal').remove()" class="text-slate-400 hover:text-slate-600 transition-colors w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-200"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="p-5 overflow-y-auto flex-1">
+                ${listHtml}
+                ${list.length === 0 ? '<p class="text-sm text-slate-500 text-center py-4">No categories found.</p>' : ''}
+            </div>
+            <div class="p-5 border-t border-slate-100 bg-slate-50 flex gap-2">
+                <input type="text" id="new-cat-input" placeholder="New category name..." class="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary/50 focus:outline-none">
+                <button type="button" onclick="addCategoryItem('${type}')" class="bg-primary hover:bg-primaryHover text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm">Add</button>
+            </div>
+        </div>
+    </div>`;
+
+    document.body.insertAdjacentHTML('beforeend', html);
+}
+
+async function addCategoryItem(type) {
+    const inp = document.getElementById('new-cat-input');
+    const val = inp.value.trim();
+    if (!val) return;
+    if (predefinedCategories[type].includes(val)) { alert("Category already exists!"); return; }
+    predefinedCategories[type].push(val);
+    await saveCategories();
+    inp.value = '';
+    manageCategories(type);
+}
+
+async function editCategoryItem(type, index) {
+    const oldName = predefinedCategories[type][index];
+    const newName = prompt("Edit category name:", oldName);
+    if (newName && newName.trim() !== '' && newName.trim() !== oldName) {
+        if (predefinedCategories[type].includes(newName.trim())) { alert("Category name already exists!"); return; }
+        predefinedCategories[type][index] = newName.trim();
+        await saveCategories();
+        manageCategories(type);
+    }
+}
+
+async function deleteCategoryItem(type, index) {
+    if (confirm(`Remove "${predefinedCategories[type][index]}"?`)) {
+        predefinedCategories[type].splice(index, 1);
+        await saveCategories();
+        manageCategories(type);
+    }
+}
+
 async function getFormFields(table, data = null) {
     const i = `class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary/50 focus:outline-none mb-4"`; const l = `class="block text-xs font-semibold text-slate-600 mb-1"`;
     const v = (key) => data && data[key] ? data[key] : '';
 
+    if (!predefinedCategories.loaded) await loadCategories();
+
     if (table === 'rentIncome') return `<label ${l}>Date</label><input type="date" id="f-date" required ${i} value="${v('date')}"><label ${l}>Amount (Rs)</label><input type="number" id="f-amount" required ${i} value="${v('amount')}">`;
-    else if (table === 'expenses') return `<label ${l}>Date</label><input type="date" id="f-date" required ${i} value="${v('date')}"><label ${l}>Category</label><select id="f-cat" required ${i} style="margin-bottom:1rem"><option ${v('category') === 'Repair' ? 'selected' : ''}>Repair</option><option ${v('category') === 'Maintenance' ? 'selected' : ''}>Maintenance</option><option ${v('category') === 'Fuel' ? 'selected' : ''}>Fuel</option><option ${v('category') === 'Other' ? 'selected' : ''}>Other</option></select><label ${l}>Description</label><input type="text" id="f-desc" ${i} value="${v('description')}"><label ${l}>Amount</label><input type="number" id="f-amount" required ${i} value="${v('amount')}"><label ${l}>Bill Image (Optional)</label><input type="file" id="f-image" accept="image/*" ${i}> <p class="text-[10px] text-slate-400 -mt-3 mb-3">Leave file empty to keep existing image</p>`;
+    else if (table === 'expenses') {
+        let opts = predefinedCategories.expenses.map(c => `<option ${v('category') === c ? 'selected' : ''}>${c}</option>`).join('');
+        // If an old category exists that was deleted from settings, still show it
+        if (v('category') && !predefinedCategories.expenses.includes(v('category'))) opts += `<option selected>${v('category')}</option>`;
+        return `<label ${l}>Date</label><input type="date" id="f-date" required ${i} value="${v('date')}"><div class="flex items-center justify-between mb-1"><label class="text-xs font-semibold text-slate-600">Category</label><button type="button" onclick="manageCategories('expenses')" class="text-[10px] text-indigo-500 hover:text-indigo-700 font-bold uppercase"><i class="fa-solid fa-gear mr-1"></i>Manage</button></div><select id="f-cat" required ${i} style="margin-bottom:1rem">${opts}</select><label ${l}>Description</label><input type="text" id="f-desc" ${i} value="${v('description')}"><label ${l}>Amount</label><input type="number" id="f-amount" required ${i} value="${v('amount')}"><label ${l}>Bill Image (Optional)</label><input type="file" id="f-image" accept="image/*" ${i}> <p class="text-[10px] text-slate-400 -mt-3 mb-3">Leave file empty to keep existing image</p>`;
+    }
     else if (table === 'monthlyKm') {
         let startVal = v('startKm'), attr = '';
         if (!data) {
@@ -280,7 +673,11 @@ async function getFormFields(table, data = null) {
         return `<label ${l}>Date</label><input type="date" id="f-date" required ${i} value="${v('date')}"><label ${l}>Start KM</label><input type="number" id="f-start" required ${i} ${attr} value="${startVal}"><label ${l}>Monthly KM</label><input type="number" id="f-monthly" required ${i} value="${v('monthlyKm')}">`;
     }
     else if (table === 'serviceTracker') return `<label ${l}>Service Date</label><input type="date" id="f-date" required ${i} value="${v('serviceDate')}"><label ${l}>Service KM</label><input type="number" id="f-skm" required ${i} value="${v('serviceKm')}"><label ${l}>Interval KM (e.g. 5000)</label><input type="number" id="f-intm" required ${i} value="${v('intervalKm')}">`;
-    else if (table === 'renewals') return `<label ${l}>Type</label><select id="f-type" required ${i} style="margin-bottom:1rem"><option ${v('type') === 'Insurance' ? 'selected' : ''}>Insurance</option><option ${v('type') === 'License' ? 'selected' : ''}>License</option><option ${v('type') === 'Emission Test (PUC)' ? 'selected' : ''}>Emission Test (PUC)</option></select><label ${l}>Last Renewed</label><input type="date" id="f-ldate" required ${i} value="${v('lastRenewedDate')}"><label ${l}>Expiry</label><input type="date" id="f-edate" required ${i} value="${v('expiryDate')}"><label ${l}>Image</label><input type="file" id="f-image" accept="image/*" ${i}>`;
+    else if (table === 'renewals') {
+        let opts = predefinedCategories.renewals.map(c => `<option ${v('type') === c ? 'selected' : ''}>${c}</option>`).join('');
+        if (v('type') && !predefinedCategories.renewals.includes(v('type'))) opts += `<option selected>${v('type')}</option>`;
+        return `<div class="flex items-center justify-between mb-1"><label class="text-xs font-semibold text-slate-600">Type</label><button type="button" onclick="manageCategories('renewals')" class="text-[10px] text-indigo-500 hover:text-indigo-700 font-bold uppercase"><i class="fa-solid fa-gear mr-1"></i>Manage</button></div><select id="f-type" required ${i} style="margin-bottom:1rem">${opts}</select><label ${l}>Last Renewed</label><input type="date" id="f-ldate" required ${i} value="${v('lastRenewedDate')}"><label ${l}>Expiry</label><input type="date" id="f-edate" required ${i} value="${v('expiryDate')}"><label ${l}>Image</label><input type="file" id="f-image" accept="image/*" ${i}>`;
+    }
     return '';
 }
 
@@ -303,6 +700,23 @@ function closeModal() { document.getElementById('app-modal').classList.add('hidd
 
 async function editRecord(table, id) { openModal(table, id); }
 
+function handleFilterChange(val, skipRender = false) {
+    const custWrap = document.getElementById('custom-date-inputs');
+    if (val === 'customRange' && custWrap) {
+        custWrap.classList.remove('hidden');
+        custWrap.classList.add('flex');
+    } else if (custWrap) {
+        custWrap.classList.add('hidden');
+        custWrap.classList.remove('flex');
+    }
+
+    if (!skipRender) {
+        if (val !== 'customRange') setDashboardFilter(val);
+        // Custom range only triggers on date input change
+        else currentDashboardFilter = val;
+    }
+}
+
 async function submitForm(e, table) {
     e.preventDefault();
     const sBtn = document.getElementById('modal-save-btn'); sBtn.innerText = 'Saving...'; sBtn.disabled = true;
@@ -314,7 +728,18 @@ async function submitForm(e, table) {
     if (table === 'rentIncome') p = { ...p, date: document.getElementById('f-date').value, amount: Number(document.getElementById('f-amount').value) };
     else if (table === 'expenses') { p = { ...p, date: document.getElementById('f-date').value, category: document.getElementById('f-cat').value, description: document.getElementById('f-desc').value, amount: Number(document.getElementById('f-amount').value) }; const fi = document.getElementById('f-image'); if (fi && fi.files.length > 0) p.bill = await fileToBase64(fi.files[0]); }
     else if (table === 'monthlyKm') { const s = Number(document.getElementById('f-start').value), m = Number(document.getElementById('f-monthly').value); p = { ...p, date: document.getElementById('f-date').value, startKm: s, endKm: s + m, monthlyKm: m, currentKm: s + m }; if (m < 0) { alert("Cannot be negative"); return; } }
-    else if (table === 'serviceTracker') { const sk = Number(document.getElementById('f-skm').value), ik = Number(document.getElementById('f-intm').value); p = { ...p, serviceDate: document.getElementById('f-date').value, serviceKm: sk, intervalKm: ik, nextServiceKm: sk + ik, status: 'Completed' }; }
+    else if (table === 'serviceTracker') {
+        const sk = Number(document.getElementById('f-skm').value), ik = Number(document.getElementById('f-intm').value);
+        p = { ...p, serviceDate: document.getElementById('f-date').value, serviceKm: sk, intervalKm: ik, nextServiceKm: sk + ik, status: 'Active' };
+
+        // If it's a new record, set all old service records to "Completed (Past)" so they stop showing as Overdue
+        if (!editingId) {
+            const oldRecords = await db.collection('serviceTracker').where('status', '==', 'Active').get();
+            const batch = db.batch();
+            oldRecords.docs.forEach((doc) => batch.update(doc.ref, { status: 'Completed (Past)' }));
+            await batch.commit();
+        }
+    }
     else if (table === 'renewals') { p = { ...p, type: document.getElementById('f-type').value, lastRenewedDate: document.getElementById('f-ldate').value, expiryDate: document.getElementById('f-edate').value }; const fi = document.getElementById('f-image'); if (fi && fi.files.length > 0) p.documentImage = await fileToBase64(fi.files[0]); }
 
     try {
@@ -575,7 +1000,12 @@ function showToast(msg, type = 'success') { const t = document.createElement('di
 
 document.getElementById('notif-btn').addEventListener('click', () => document.getElementById('notif-dropdown').classList.toggle('hidden'));
 document.addEventListener('click', (e) => { if (!e.target.closest('#notif-dropdown') && !e.target.closest('#notif-btn')) document.getElementById('notif-dropdown').classList.add('hidden'); });
-document.getElementById('mobile-menu-btn').addEventListener('click', () => { document.getElementById('mobile-sidebar').classList.remove('-translate-x-full'); document.getElementById('mobile-sidebar-overlay').classList.remove('hidden'); });
+
+const openMenuAction = () => { document.getElementById('mobile-sidebar').classList.remove('-translate-x-full'); document.getElementById('mobile-sidebar-overlay').classList.remove('hidden'); };
+
+if (document.getElementById('mobile-menu-btn')) { document.getElementById('mobile-menu-btn').addEventListener('click', openMenuAction); }
+if (document.getElementById('mobile-menu-open-more')) { document.getElementById('mobile-menu-open-more').addEventListener('click', (e) => { e.preventDefault(); openMenuAction(); }); }
+
 document.getElementById('close-mobile-menu').addEventListener('click', closeMobileMenu);
 document.getElementById('mobile-sidebar-overlay').addEventListener('click', closeMobileMenu);
 

@@ -219,3 +219,153 @@ body {
 .dark .hover\:bg-primaryHover:hover {
     background-color: #4f46e5 !important;
 }
+
+/* -------------------------------------------------------------------------- */
+/* Mobile App Feel Improvements                                               */
+/* -------------------------------------------------------------------------- */
+* {
+    -webkit-tap-highlight-color: transparent;
+}
+
+body {
+    overscroll-behavior-y: none;
+}
+
+button,
+a,
+.nav-item,
+.mobile-nav-btn {
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+button:active,
+.mobile-nav-btn:active {
+    transform: scale(0.95);
+    transition: transform 0.1s;
+}
+
+.pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 1rem);
+}
+
+.mobile-nav-btn.active {
+    color: #4f46e5;
+    /* Primary */
+}
+
+.dark .mobile-nav-btn.active {
+    color: #818cf8;
+    /* Dark Primary */
+}
+
+/* Hide scrollbars completely on small touch screens to look like an app */
+@media (max-width: 768px) {
+    ::-webkit-scrollbar {
+        display: none;
+    }
+
+    .main-scroll-area {
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+
+    /* Bottom Sheet Modal */
+    #app-modal>div {
+        margin-top: auto;
+        border-bottom-left-radius: 0;
+        border-bottom-right-radius: 0;
+        max-height: 90vh;
+        animation: slideUpModal 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    @keyframes slideUpModal {
+        from {
+            transform: translateY(100%);
+        }
+
+        to {
+            transform: translateY(0);
+        }
+    }
+
+    /* Convert Tables to Cards on Mobile */
+    table,
+    thead,
+    tbody,
+    th,
+    td,
+    tr {
+        display: block;
+    }
+
+    thead tr {
+        position: absolute;
+        top: -9999px;
+        left: -9999px;
+    }
+
+    .overflow-x-auto table tr {
+        margin-bottom: 1rem;
+        background: #fff;
+        border-radius: 0.75rem;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        border: 1px solid #f1f5f9;
+        overflow: hidden;
+    }
+
+    .dark .overflow-x-auto table tr {
+        background: #1e293b !important;
+        border-color: #334155 !important;
+    }
+
+    .overflow-x-auto td {
+        position: relative;
+        padding: 0.75rem 1rem 0.75rem 45% !important;
+        text-align: right;
+        border-bottom: 1px solid #f1f5f9;
+        font-size: 0.875rem;
+        min-height: 48px;
+    }
+
+    .dark .overflow-x-auto td {
+        border-bottom-color: #334155;
+    }
+
+    .overflow-x-auto td:last-child {
+        border-bottom: 0;
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        background: #f8fafc;
+        padding: 0.75rem 1rem !important;
+    }
+
+    .dark .overflow-x-auto td:last-child {
+        background: #0f172a;
+    }
+
+    .overflow-x-auto td::before {
+        content: attr(data-label);
+        position: absolute;
+        left: 1rem;
+        top: 0.75rem;
+        width: 40%;
+        padding-right: 10px;
+        white-space: nowrap;
+        text-align: left;
+        font-weight: 600;
+        font-size: 0.75rem;
+        color: #64748b;
+        text-transform: uppercase;
+    }
+
+    .dark .overflow-x-auto td::before {
+        color: #94a3b8;
+    }
+}
+
+.dark nav.md\:hidden {
+    background-color: rgba(30, 41, 59, 0.9) !important;
+    border-top-color: #334155 !important;
+}
