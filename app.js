@@ -72,96 +72,149 @@ async function updateGlobalCalendarUI() {
     const km = await fetchCollection('monthlyKm');
     const serv = await fetchCollection('serviceTracker');
 
-    const year = globalCalDate.getFullYear();
-    const month = globalCalDate.getMonth();
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const firstDay = new Date(year, month, 1).getDay(); // 0 is Sunday
-
-    const daysMap = {};
-    for (let i = 1; i <= daysInMonth; i++) daysMap[i] = { rent: false, personal: false, serv: false, exp: false, inc: false };
+    const eventsMap = {};
+    const addEvent = (d, type, label) => {
+        const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+        if (!eventsMap[key]) eventsMap[key] = { rent: false, personal: false, serv: false, exp: false, inc: false, details: [] };
+        eventsMap[key][type] = true;
+        eventsMap[key].details.push(label);
+    };
 
     km.forEach(r => {
         let s = new Date(r.startDate || r.date);
         let e = new Date(r.endDate || r.date);
         let d = new Date(s);
         while (d <= e) {
-            if (d.getFullYear() === year && d.getMonth() === month) {
-                if (r.type === 'Rent') daysMap[d.getDate()].rent = true;
-                else daysMap[d.getDate()].personal = true;
-            }
+            let type = r.type === 'Rent' ? 'rent' : 'personal';
+            addEvent(d, type, `${r.type} (${r.drivenKm || r.monthlyKm || 0} KM)`);
             d.setDate(d.getDate() + 1);
         }
     });
 
     serv.forEach(r => {
         let d = new Date(r.serviceDate);
-        if (d.getFullYear() === year && d.getMonth() === month) daysMap[d.getDate()].serv = true;
+        addEvent(d, 'serv', `Service (${r.serviceKm} KM)`);
     });
 
     exp.forEach(r => {
         let d = new Date(r.date);
-        if (d.getFullYear() === year && d.getMonth() === month) daysMap[d.getDate()].exp = true;
+        addEvent(d, 'exp', `Expense: ${r.category} (Rs.${r.amount})`);
     });
 
     inc.forEach(r => {
         let d = new Date(r.date);
-        if (d.getFullYear() === year && d.getMonth() === month) daysMap[d.getDate()].inc = true;
+        addEvent(d, 'inc', `Income (Rs.${r.amount})`);
     });
 
-    const monthName = globalCalDate.toLocaleString('default', { month: 'long' });
+    const targetYear = globalCalDate.getFullYear();
+    const targetMonth = globalCalDate.getMonth();
+
     let html = `
     <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 slide-up delay-400">
         <div class="flex justify-between items-center mb-6">
             <h3 class="font-bold text-lg text-slate-800">Vehicle Timeline</h3>
             <div class="flex items-center gap-2">
-                <button onclick="changeGlobalCal(-1)" class="p-2 bg-slate-50 hover:bg-slate-100 rounded text-slate-600 transition"><i class="fa-solid fa-chevron-left"></i></button>
-                <span class="font-bold text-slate-700 w-32 text-center text-sm">${monthName} ${year}</span>
-                <button onclick="changeGlobalCal(1)" class="p-2 bg-slate-50 hover:bg-slate-100 rounded text-slate-600 transition"><i class="fa-solid fa-chevron-right"></i></button>
+                <button onclick="changeGlobalCal(-3)" class="p-2 bg-slate-50 hover:bg-slate-100 rounded text-slate-600 transition"><i class="fa-solid fa-chevron-left"></i></button>
+                <span class="font-bold text-slate-700 w-auto px-4 text-center text-sm">3 Months View</span>
+                <button onclick="changeGlobalCal(3)" class="p-2 bg-slate-50 hover:bg-slate-100 rounded text-slate-600 transition"><i class="fa-solid fa-chevron-right"></i></button>
             </div>
         </div>
         
         <div class="flex flex-wrap gap-4 mb-6 text-xs font-semibold text-slate-600">
-            <div class="flex items-center"><span class="w-3 h-3 rounded-full bg-indigo-500 mr-1.5 shadow-sm"></span>Rent (Usage)</div>
-            <div class="flex items-center"><span class="w-3 h-3 rounded-full bg-sky-500 mr-1.5 shadow-sm"></span>Personal (Usage)</div>
+            <div class="flex items-center"><span class="w-3 h-3 rounded-full bg-indigo-500 mr-1.5 shadow-sm"></span>Rent</div>
+            <div class="flex items-center"><span class="w-3 h-3 rounded-full bg-sky-500 mr-1.5 shadow-sm"></span>Personal</div>
             <div class="flex items-center"><span class="w-3 h-3 rounded-full bg-orange-400 mr-1.5 shadow-sm"></span>Service</div>
-            <div class="flex items-center"><span class="w-3 h-3 rounded-full bg-rose-500 mr-1.5 shadow-sm"></span>Expense & Repair</div>
+            <div class="flex items-center"><span class="w-3 h-3 rounded-full bg-rose-500 mr-1.5 shadow-sm"></span>Expense</div>
             <div class="flex items-center"><span class="w-3 h-3 rounded-full bg-emerald-500 mr-1.5 shadow-sm"></span>Income</div>
         </div>
 
-        <div class="grid grid-cols-7 gap-2 sm:gap-4 text-center mb-2">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
     `;
 
-    ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].forEach(d => { html += `<div class="text-xs font-bold text-slate-400 py-1">${d}</div>`; });
-    html += `</div><div class="grid grid-cols-7 gap-2 sm:gap-4">`;
+    for (let offset = -1; offset <= 1; offset++) {
+        let mDate = new Date(targetYear, targetMonth + offset, 1);
+        let year = mDate.getFullYear();
+        let month = mDate.getMonth();
+        let daysInMonth = new Date(year, month + 1, 0).getDate();
+        let firstDay = new Date(year, month, 1).getDay();
+        let monthName = mDate.toLocaleString('default', { month: 'long' });
 
-    for (let i = 0; i < firstDay; i++) html += `<div></div>`;
+        html += `<div class="bg-slate-50/50 p-4 rounded-xl border border-slate-100">
+            <h4 class="font-bold text-center text-slate-700 mb-4">${monthName} ${year}</h4>
+            <div class="grid grid-cols-7 gap-1 sm:gap-1.5 text-center mb-2">`;
 
-    const today = new Date();
-    for (let i = 1; i <= daysInMonth; i++) {
-        const dm = daysMap[i];
-        let cellBg = 'bg-slate-50 border border-slate-100 text-slate-600';
+        ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].forEach(d => { html += `<div class="text-[10px] font-bold text-slate-400 py-1">${d}</div>`; });
+        html += `</div><div class="grid grid-cols-7 gap-1 sm:gap-1.5">`;
 
-        if (dm.rent && dm.personal) cellBg = 'bg-gradient-to-br from-indigo-500 to-sky-500 text-white border-0 font-bold shadow';
-        else if (dm.rent) cellBg = 'bg-indigo-500 text-white border-0 font-bold shadow';
-        else if (dm.personal) cellBg = 'bg-sky-500 text-white border-0 font-bold shadow';
-        else if (today.getDate() === i && today.getMonth() === month && today.getFullYear() === year) {
-            cellBg = 'bg-primary/10 border-primary/30 text-primary font-bold shadow-sm ring-1 ring-primary/20';
+        for (let i = 0; i < firstDay; i++) html += `<div></div>`;
+
+        const today = new Date();
+        for (let i = 1; i <= daysInMonth; i++) {
+            const key = `${year}-${month}-${i}`;
+            const dm = eventsMap[key] || { rent: false, personal: false, serv: false, exp: false, inc: false, details: [] };
+
+            let detailsText = dm.details.length > 0 ? dm.details.join('\n') : '';
+            let encDetails = encodeURIComponent(detailsText);
+            let safeTitle = detailsText.replace(/"/g, '&quot;');
+
+            let indicators = '';
+            if (dm.rent) indicators += `<div class="w-1.5 h-1.5 rounded-full bg-indigo-500"></div>`;
+            if (dm.personal) indicators += `<div class="w-1.5 h-1.5 rounded-full bg-sky-500"></div>`;
+            if (dm.serv) indicators += `<div class="w-1.5 h-1.5 rounded-full bg-orange-400"></div>`;
+            if (dm.exp) indicators += `<div class="w-1.5 h-1.5 rounded-full bg-rose-500"></div>`;
+            if (dm.inc) indicators += `<div class="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>`;
+
+            let cellBg = 'bg-white border text-slate-600 hover:bg-slate-100';
+            if (today.getDate() === i && today.getMonth() === month && today.getFullYear() === year) {
+                cellBg = 'bg-primary/10 text-primary border-primary/30 font-bold';
+            } else if (dm.details.length > 0) {
+                cellBg = 'bg-white border-slate-200 text-slate-700 cursor-pointer shadow-sm hover:border-slate-300';
+            } else {
+                cellBg = 'bg-transparent border-transparent text-slate-400';
+            }
+
+            let onClickAction = detailsText ? `onclick="showCalDetails('${encDetails}')"` : '';
+
+            html += `<div title="${safeTitle}" ${onClickAction} class="h-9 rounded flex flex-col items-center justify-center transition-colors ${cellBg} relative">
+                <span class="text-[11px] sm:text-xs">${i}</span>
+                ${indicators ? `<div class="flex gap-0.5 absolute bottom-1">${indicators}</div>` : ''}
+            </div>`;
         }
-
-        let indicators = '';
-        if (dm.serv) indicators += `<div class="w-2 h-2 rounded-full bg-orange-400 shadow-sm border border-white" title="Service"></div>`;
-        if (dm.exp) indicators += `<div class="w-2 h-2 rounded-full bg-rose-500 shadow-sm border border-white" title="Expense/Repair"></div>`;
-        if (dm.inc) indicators += `<div class="w-2 h-2 rounded-full bg-emerald-500 shadow-sm border border-white" title="Income"></div>`;
-
-        html += `<div class="aspect-square rounded-xl flex flex-col items-center justify-center transition-transform hover:scale-105 ${cellBg} relative">
-            <span class="text-sm sm:text-base hover-lift cursor-default">${i}</span>
-            ${indicators ? `<div class="flex gap-1 absolute bottom-1 sm:bottom-2">${indicators}</div>` : ''}
-        </div>`;
+        html += `</div></div>`;
     }
+
     html += `</div></div>`;
 
     document.getElementById('dash-global-calendar').innerHTML = html;
 }
+
+window.showCalDetails = function (details) {
+    const decoded = decodeURIComponent(details);
+    if (!decoded) return;
+
+    document.getElementById('modal-title').innerText = "Day Details";
+
+    // Format details with some tailwind styles
+    const lines = decoded.split('\n');
+    let html = `<ul class="space-y-2">`;
+    lines.forEach(l => {
+        let icon = 'fa-circle-info text-sky-500';
+        if (l.includes('Rent')) icon = 'fa-hand-holding-dollar text-indigo-500';
+        else if (l.includes('Personal')) icon = 'fa-car text-sky-500';
+        else if (l.includes('Expense')) icon = 'fa-money-bill-transfer text-rose-500';
+        else if (l.includes('Income')) icon = 'fa-arrow-trend-up text-emerald-500';
+        else if (l.includes('Service')) icon = 'fa-screwdriver-wrench text-orange-400';
+
+        html += `<li class="flex items-start bg-slate-50 p-3 rounded-lg border border-slate-100"><i class="fa-solid ${icon} mt-1 mr-3"></i><span class="text-sm font-medium text-slate-700">${l}</span></li>`;
+    });
+    html += `</ul>
+    <div class="mt-6 flex justify-end">
+        <button onclick="closeModal()" class="bg-primary hover:bg-primaryHover text-white px-5 py-2 rounded-xl text-sm font-medium transition-colors">Close</button>
+    </div>`;
+
+    document.getElementById('modal-body').innerHTML = html;
+    document.getElementById('app-modal').classList.remove('hidden');
+};
 
 async function renderDashboard() {
     let incomeRecords = await fetchCollection('rentIncome');
